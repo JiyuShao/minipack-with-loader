@@ -129,7 +129,7 @@ function createAsset(filename): Asset {
 // dependencies. We will keep that going until we figure out about every module
 // in the application and how they depend on one another. This understanding of
 // a project is called the dependency graph.
-function createGraph(entry: string): Graph {
+export function createGraph(entry: string): Graph {
   // Start by parsing the entry file.
   const mainAsset = createAsset(entry);
 
@@ -189,7 +189,7 @@ function createGraph(entry: string): Graph {
 //
 // That function will receive just one parameter: An object with information
 // about every module in our graph.
-function bundle(graph: Graph): string {
+export function bundle(graph: Graph): string {
   let modules = '';
 
   // Before we get to the body of that function, we'll construct the object that
@@ -222,7 +222,7 @@ function bundle(graph: Graph): string {
       function (require, module, exports) {
         ${mod.code}
       },
-      ${JSON.stringify(mod.mapping)},
+      ${JSON.stringify(mod.mapping || {})},
     ],`;
   });
 
@@ -263,7 +263,7 @@ function bundle(graph: Graph): string {
         return module.exports;
       }
 
-      require(0);
+      return require(0);
     })({${modules}})
   `;
 
@@ -271,7 +271,8 @@ function bundle(graph: Graph): string {
   return result;
 }
 
-const graph = createGraph('./example/entry.js');
-const result = bundle(graph);
-
-console.log(result);
+export default (filename: string) => {
+  const graph = createGraph(filename);
+  const result = bundle(graph);
+  return result;
+};
