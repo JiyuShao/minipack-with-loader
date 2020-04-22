@@ -26,14 +26,35 @@
  * and others are skipped to make this example as simple as possible.
  */
 
-import fs from 'fs';
 import path from 'path';
 
 import { parse, traverse, transformFromAstSync } from '@babel/core';
 import dedent from 'dedent';
+import { generateUUID, resetUUID } from './uuid';
+import runLoaders from './run-loaders';
+
+// define minipack options, similiar with webpack options
+export interface MinipackOptions {
+  // path to entry file
+  entry: string;
+
+  // loader related options
+  module?: {
+    rules: Loader[];
+  };
+}
+
+// define loader type
+export interface Loader {
+  // include all modules matching any of these conditions
+  test: RegExp;
+
+  // loader name
+  use: string;
+}
 
 // Asset type defination
-interface Asset {
+export interface Asset {
   // unique identifier to this module
   id: number;
 
@@ -51,15 +72,15 @@ interface Asset {
 }
 
 // Graph type defination
-type Graph = Asset[];
-
-let ID = 0;
+export type Graph = Asset[];
 
 // We start by creating a function that will accept a path to a file, read
 // its contents, and extract its dependencies.
-function createAsset(filename): Asset {
-  // Read the content of the file as a string.
-  const content = fs.readFileSync(filename, 'utf-8');
+async function createAsset(
+  filename: string,
+  options: MinipackOptions
+): Promise<Asset> {
+  const content = await runLoaders(filename, options);
 
   // Now we try to figure out which files this file depends on. We can do that
   // by looking at its content for import strings. However, this is a pretty
@@ -82,7 +103,7 @@ function createAsset(filename): Asset {
 
   // We also assign a unique identifier to this module by incrementing a simple
   // counter.
-  const id = ID++;
+  const id = generateUUID();
 
   let code = '';
 
@@ -129,9 +150,9 @@ function createAsset(filename): Asset {
 // dependencies. We will keep that going until we figure out about every module
 // in the application and how they depend on one another. This understanding of
 // a project is called the dependency graph.
-export function createGraph(entry: string): Graph {
+async function createGraph(options: MinipackOptions): Promise<Graph> {
   // Start by parsing the entry file.
-  const mainAsset = createAsset(entry);
+  const mainAsset = await createAsset(options.entry, options);
 
   // We're going to use a queue to parse the dependencies of every asset. To do
   // that we are defining an array with just the entry asset.
@@ -145,34 +166,36 @@ export function createGraph(entry: string): Graph {
     const dirname = path.dirname(asset.filename);
 
     // We iterate over the list of relative paths to its dependencies.
-    asset.dependencies.forEach(relativePath => {
-      // Our `createAsset()` function expects an absolute filename. The
-      // dependencies array is an array of relative paths. These paths are
-      // relative to the file that imported them. We can turn the relative path
-      // into an absolute one by joining it with the path to the directory of
-      // the parent asset.
-      const absolutePath = path.join(dirname, relativePath);
+    await Promise.all(
+      asset.dependencies.map(async relativePath => {
+        // Our `createAsset()` function expects an absolute filename. The
+        // dependencies array is an array of relative paths. These paths are
+        // relative to the file that imported them. We can turn the relative path
+        // into an absolute one by joining it with the path to the directory of
+        // the parent asset.
+        const absolutePath = path.join(dirname, relativePath);
 
-      // Parse the asset, read its content, and extract its dependencies.
-      const child = createAsset(absolutePath);
+        // Parse the asset, read its content, and extract its dependencies.
+        const child = await createAsset(absolutePath, options);
 
-      // Every one of our assets has a list of relative paths to the modules it
-      // depends on. We are going to iterate over them, parse them with our
-      // `createAsset()` function, and track the dependencies this module has in
-      // this object.
-      if (!asset.mapping) {
-        asset.mapping = {};
-      }
+        // Every one of our assets has a list of relative paths to the modules it
+        // depends on. We are going to iterate over them, parse them with our
+        // `createAsset()` function, and track the dependencies this module has in
+        // this object.
+        if (!asset.mapping) {
+          asset.mapping = {};
+        }
 
-      // It's essential for us to know that `asset` depends on `child`. We
-      // express that relationship by adding a new property to the `mapping`
-      // object with the id of the child.
-      asset.mapping[relativePath] = child.id;
+        // It's essential for us to know that `asset` depends on `child`. We
+        // express that relationship by adding a new property to the `mapping`
+        // object with the id of the child.
+        asset.mapping[relativePath] = child.id;
 
-      // Finally, we push the child asset into the queue so its dependencies
-      // will also be iterated over and parsed.
-      queue.push(child);
-    });
+        // Finally, we push the child asset into the queue so its dependencies
+        // will also be iterated over and parsed.
+        queue.push(child);
+      })
+    );
   }
 
   // At this point the queue is just an array with every module in the target
@@ -189,7 +212,7 @@ export function createGraph(entry: string): Graph {
 //
 // That function will receive just one parameter: An object with information
 // about every module in our graph.
-export function bundle(graph: Graph): string {
+function bundle(graph: Graph): string {
   let modules = '';
 
   // Before we get to the body of that function, we'll construct the object that
@@ -271,8 +294,16 @@ export function bundle(graph: Graph): string {
   return result;
 }
 
-export default (filename: string) => {
-  const graph = createGraph(filename);
+const minipack = async (options: MinipackOptions): Promise<string> => {
+  // reset UUID
+  resetUUID();
+
+  // create graph from entry file
+  const graph = await createGraph(options);
+
+  // create bundle from graph
   const result = bundle(graph);
   return result;
 };
+
+export default minipack;
