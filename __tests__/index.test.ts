@@ -6,6 +6,21 @@ describe('minipack-with-loader', () => {
     const entry = path.resolve(__dirname, './fixtures/ab.mjs.js');
     const codeString = await minipack({
       entry,
+      module: {
+        rules: [
+          {
+            test: /\.js$/i,
+            use: [
+              {
+                loader: 'babel-loader',
+                options: {
+                  presets: ['@babel/preset-env'],
+                },
+              },
+            ],
+          },
+        ],
+      },
     });
     const execCode = eval(codeString);
     expect(typeof execCode.default === 'function').toBe(true);

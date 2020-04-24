@@ -28,7 +28,7 @@
 
 import path from 'path';
 
-import { parse, traverse, transformFromAstSync } from '@babel/core';
+import { parse, traverse } from '@babel/core';
 import dedent from 'dedent';
 import { generateUUID, resetUUID } from './uuid';
 import runLoaders from './run-loaders';
@@ -40,7 +40,7 @@ export interface MinipackOptions {
 
   // loader related options
   module?: {
-    rules: Loader[];
+    rules: any[];
   };
 }
 
@@ -80,7 +80,13 @@ async function createAsset(
   filename: string,
   options: MinipackOptions
 ): Promise<Asset> {
-  const content = await runLoaders(filename, options);
+  const { result } = await runLoaders(filename, options);
+
+  let code = ((result[0] as any) as string | Buffer) || '';
+  // if code is raw data, transform it to string
+  if (code instanceof Buffer) {
+    code = code.toString();
+  }
 
   // Now we try to figure out which files this file depends on. We can do that
   // by looking at its content for import strings. However, this is a pretty
@@ -94,7 +100,7 @@ async function createAsset(
   //
   // The AST contains a lot of information about our code. We can query it to
   // understand what our code is trying to do.
-  const ast = parse(content, {
+  const ast = parse(code, {
     sourceType: 'module',
   });
 
@@ -104,8 +110,6 @@ async function createAsset(
   // We also assign a unique identifier to this module by incrementing a simple
   // counter.
   const id = generateUUID();
-
-  let code = '';
 
   if (ast) {
     // We traverse the AST to try and understand which modules this module depends
@@ -119,19 +123,25 @@ async function createAsset(
         // We push the value that we import into the dependencies array.
         dependencies.push(node.source.value);
       },
+      // handle require(module) dependencies logic
+      CallExpression: ({ node }) => {
+        if ((node.callee as Record<string, any>).name === 'require') {
+          dependencies.push((node.arguments[0] as Record<string, any>)?.value);
+        }
+      },
     });
 
-    // We use EcmaScript modules and other JavaScript features that may not be
-    // supported on all browsers. To make sure our bundle runs in all browsers we
-    // will transpile it with Babel (see https://babeljs.io).
-    //
-    // The `presets` option is a set of rules that tell Babel how to transpile
-    // our code. We use `@babel/preset-env` to transpile our code to something
-    // that most browsers can run.
-    code =
-      transformFromAstSync(ast, undefined, {
-        presets: ['@babel/preset-env'],
-      })?.code || '';
+    // // We use EcmaScript modules and other JavaScript features that may not be
+    // // supported on all browsers. To make sure our bundle runs in all browsers we
+    // // will transpile it with Babel (see https://babeljs.io).
+    // //
+    // // The `presets` option is a set of rules that tell Babel how to transpile
+    // // our code. We use `@babel/preset-env` to transpile our code to something
+    // // that most browsers can run.
+    // code =
+    //   transformFromAstSync(ast, undefined, {
+    //     presets: ['@babel/preset-env'],
+    //   })?.code || '';
   }
 
   // Return all information about this module.
