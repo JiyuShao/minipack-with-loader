@@ -42,6 +42,9 @@ export interface MinipackOptions {
   module?: {
     rules: any[];
   };
+
+  // final loader to handle js output code
+  finalLoader?: Loader[];
 }
 
 // define loader type

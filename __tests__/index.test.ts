@@ -1,9 +1,11 @@
 import path from 'path';
 import minipack from '../src/index';
 
+const fixtures = path.resolve(__dirname, 'fixtures');
+
 describe('minipack-with-loader', () => {
-  it('`import abc.mjs.js with ES Module` should work', async () => {
-    const entry = path.resolve(__dirname, './fixtures/ab.mjs.js');
+  it('`compile ab.mjs.js with babel-loader` should work', async () => {
+    const entry = path.resolve(fixtures, './ab.mjs.js');
     const codeString = await minipack({
       entry,
       module: {
@@ -32,8 +34,8 @@ describe('minipack-with-loader', () => {
     `);
   });
 
-  it('`json5-loader` should work', async () => {
-    const entry = path.resolve(__dirname, './fixtures/json5-loader.mjs.js');
+  it('`compile json5-tester.mjs.js with json5-loader` should work', async () => {
+    const entry = path.resolve(fixtures, './json5-tester.mjs.js');
     const codeString = await minipack({
       entry,
       module: {
@@ -53,5 +55,39 @@ describe('minipack-with-loader', () => {
         "test": "this is raw-loader test string",
       }
     `);
+  });
+
+  it('`compile ab.mjs.js with is-json-loader` should throw error', async () => {
+    const entry = path.resolve(fixtures, './ab.mjs.js');
+
+    try {
+      await minipack({
+        entry,
+        module: {
+          rules: [
+            {
+              test: /\.js$/i,
+              use: path.resolve(fixtures, './is-json-loader.js'),
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      expect(error.message).toEqual('content is not object');
+    }
+  });
+
+  it('`compile import statement without finalLoader` should throw error', async () => {
+    const entry = path.resolve(fixtures, './ab.mjs.js');
+    try {
+      await minipack({
+        entry,
+        finalLoader: [],
+      });
+    } catch (error) {
+      expect(error.message).toMatchInlineSnapshot(
+        `"this.input.charCodeAt is not a function"`
+      );
+    }
   });
 });

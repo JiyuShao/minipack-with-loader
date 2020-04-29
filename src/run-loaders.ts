@@ -4,7 +4,7 @@
  * @Author: Jiyu Shao
  * @Date: 2020-04-22 14:58:49
  * @Last Modified by: Jiyu Shao
- * @Last Modified time: 2020-04-24 16:59:44
+ * @Last Modified time: 2020-04-29 19:14:18
  */
 
 import fs from 'fs';
@@ -46,6 +46,18 @@ export const getMatchedLoaders = (
   filename: string,
   options: MinipackOptions
 ): Loader[] => {
+  // get final loader to transform final js output code
+  const {
+    finalLoader = [
+      {
+        loader: 'babel-loader',
+        options: {
+          plugins: ['@babel/plugin-transform-modules-commonjs'],
+        },
+      },
+    ],
+  } = options;
+
   // get all rules
   const { rules = [] } = options.module || {};
 
@@ -64,15 +76,7 @@ export const getMatchedLoaders = (
   }, []);
 
   // add final js processing loader, to transform ES module to commonjs
-  matchedLoaders = [
-    {
-      loader: 'babel-loader',
-      options: {
-        plugins: ['@babel/plugin-transform-modules-commonjs'],
-      },
-    },
-    ...matchedLoaders,
-  ];
+  matchedLoaders = [...finalLoader, ...matchedLoaders];
   return matchedLoaders;
 };
 
@@ -100,7 +104,7 @@ const runLoaders = (
         // String[]: Absolute paths to the loaders (optionally including query string)
         // {loader, options}[]: Absolute paths to the loaders with options object
 
-        context: { minimize: true, emitError: console.error },
+        context: { minimize: true },
         // Additional loader context which is used as base context
 
         readResource: fs.readFile.bind(fs),
